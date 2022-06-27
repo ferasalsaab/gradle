@@ -1,0 +1,115 @@
+/*
+ * Copyright 2022 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.gradle.process.internal.worker.messaging;
+
+import org.gradle.api.Action;
+import org.gradle.api.logging.LogLevel;
+import org.gradle.internal.io.ClassLoaderObjectInputStream;
+import org.gradle.internal.remote.internal.inet.MultiChoiceAddress;
+import org.gradle.internal.remote.internal.inet.MultiChoiceAddressSerializer;
+import org.gradle.internal.serialize.Decoder;
+import org.gradle.internal.serialize.Encoder;
+import org.gradle.internal.serialize.InputStreamBackedDecoder;
+import org.gradle.internal.serialize.OutputStreamBackedEncoder;
+import org.gradle.internal.serialize.Serializer;
+import org.gradle.process.internal.worker.WorkerProcessContext;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+
+/**
+ * Serializes and de-serializes {@link WorkerConfig}s.
+ */
+public class WorkerConfigSerializer implements Serializer<WorkerConfig> {
+
+    public static final WorkerConfigSerializer INSTANCE = new WorkerConfigSerializer();
+    private WorkerConfigSerializer() {
+        // Private to enforce singleton.
+    }
+
+    public void writeTo(WorkerConfig config, DataOutputStream dos) throws IOException {
+        OutputStreamBackedEncoder encoder = new OutputStreamBackedEncoder(dos);
+        new WorkerConfigSerializer().write(encoder, config);
+        encoder.flush();
+    }
+
+    public WorkerConfig readFrom(DataInputStream dis) throws IOException {
+        return read(new InputStreamBackedDecoder(dis));
+    }
+
+    @Override
+    public WorkerConfig read(Decoder decoder) throws IOException {
+        LogLevel logLevel = LogLevel.values()[decoder.readSmallInt()];
+        boolean shouldPublishJvmMemoryInfo = decoder.readBoolean();
+        String gradleUserHomeDirPath = decoder.readString();
+        MultiChoiceAddress serverAddress = new MultiChoiceAddressSerializer().read(decoder);
+        final long workerId = decoder.readSmallLong();
+        final String displayName = decoder.readString();
+        Action<? super WorkerProcessContext> workerAction = deserializeWorker(decoder.readBinary(), getClass().getClassLoader());
+
+        return new WorkerConfig(logLevel, shouldPublishJvmMemoryInfo, gradleUserHomeDirPath, serverAddress, workerId, displayName, workerAction);
+    }
+
+    @Override
+    public void write(Encoder encoder, WorkerConfig config) throws IOException {
+        encoder.writeSmallInt(config.getLogLevel().ordinal());
+        encoder.writeBoolean(config.shouldPublishJvmMemoryInfo());
+        encoder.writeString(config.getGradleUserHomeDirPath());
+        new MultiChoiceAddressSerializer().write(encoder, config.getServerAddress());
+        encoder.writeSmallLong(config.getWorkerId());
+        encoder.writeString(config.getDisplayName());
+        encoder.writeBinary(serializeWorker(config.getWorkerAction()));
+    }
+
+    private static Action<? super WorkerProcessContext> deserializeWorker(byte[] serializedWorker, ClassLoader loader) throws IOException {
+        ByteArrayInputStream bais = new ByteArrayInputStream(serializedWorker);
+        ObjectInputStream in = null;
+        try {
+            in = new ClassLoaderObjectInputStream(bais, loader);
+
+            @SuppressWarnings("unchecked")
+            Action<? super WorkerProcessContext> workerAction = (Action<? super WorkerProcessContext>) in.readObject();
+            return workerAction;
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException("Cannot load worker action's class", e);
+        } finally {
+            if (in != null) {
+                in.close();
+            }
+        }
+    }
+
+    private static byte[] serializeWorker(Action<? super WorkerProcessContext> action) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ObjectOutputStream out = null;
+        try {
+            out = new ObjectOutputStream(baos);
+            out.writeObject(action);
+
+            return baos.toByteArray();
+        } finally {
+            if (out != null) {
+                out.close();
+            }
+        }
+    }
+}

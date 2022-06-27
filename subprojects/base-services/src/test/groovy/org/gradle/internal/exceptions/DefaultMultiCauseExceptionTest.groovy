@@ -16,9 +16,8 @@
 
 package org.gradle.internal.exceptions
 
-import org.gradle.util.internal.GUtil
-import spock.lang.Specification
 
+import spock.lang.Specification
 
 class DefaultMultiCauseExceptionTest extends Specification {
     def getCauseReturnsTheFirstCause() {
@@ -124,8 +123,9 @@ class DefaultMultiCauseExceptionTest extends Specification {
         def failure = new TestMultiCauseException("message", [cause1, cause2])
 
         when:
-        def bytes = GUtil.serialize(failure)
-        def result = new ObjectInputStream(new ByteArrayInputStream(bytes)).readObject()
+        def baos = new ByteArrayOutputStream()
+        new ObjectOutputStream(baos).writeObject(failure)
+        def result = new ObjectInputStream(new ByteArrayInputStream(baos.toByteArray())).readObject()
 
         then:
         result instanceof TestMultiCauseException
