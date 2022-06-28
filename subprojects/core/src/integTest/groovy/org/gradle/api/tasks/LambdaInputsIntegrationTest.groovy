@@ -18,14 +18,14 @@ package org.gradle.api.tasks
 
 import org.gradle.integtests.fixtures.AbstractIntegrationSpec
 import org.gradle.integtests.fixtures.DirectoryBuildCacheFixture
+import org.gradle.integtests.fixtures.ExecutionOptimizationDeprecationFixture
 import org.gradle.internal.reflect.problems.ValidationProblemId
 import org.gradle.internal.reflect.validation.ValidationMessageChecker
 import org.gradle.internal.reflect.validation.ValidationTestFor
 import org.gradle.test.fixtures.file.TestFile
-import org.gradle.util.internal.ToBeImplemented
 import spock.lang.Issue
 
-class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements ValidationMessageChecker, DirectoryBuildCacheFixture {
+class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements ValidationMessageChecker, DirectoryBuildCacheFixture, ExecutionOptimizationDeprecationFixture {
 
     def "implementation of nested property in Groovy build script is tracked"() {
         setupTaskClassWithActionProperty()
@@ -96,31 +96,28 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         buildFile.makeOlder()
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
+        expectImplementationUnknownDeprecation {
             nestedProperty('action')
             implementedByLambda('LambdaActionOriginal')
-            includeLink()
-        })
+        }
         run 'myTask'
         then:
         executedAndNotSkipped(':myTask')
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
+        expectImplementationUnknownDeprecation {
             nestedProperty('action')
             implementedByLambda('LambdaActionOriginal')
-            includeLink()
-        })
+        }
         run 'myTask'
         then:
         executedAndNotSkipped(':myTask')
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
+        expectImplementationUnknownDeprecation {
             nestedProperty('action')
             implementedByLambda('LambdaActionChanged')
-            includeLink()
-        })
+        }
         run 'myTask', '-Pchanged'
         then:
         executedAndNotSkipped(':myTask')
@@ -148,11 +145,10 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         buildFile.makeOlder()
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
+        expectImplementationUnknownDeprecation {
             nestedProperty('action')
             implementedByLambda('LambdaAction')
-            includeLink()
-        })
+        }
         run 'myTask'
         then:
         withBuildCache().executedAndNotSkipped(':myTask')
@@ -168,11 +164,10 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         skipped(':myTask')
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
+        expectImplementationUnknownDeprecation {
             nestedProperty('action')
             implementedByLambda('LambdaAction')
-            includeLink()
-        })
+        }
         withBuildCache().run 'myTask'
         then:
         executedAndNotSkipped(':myTask')
@@ -225,11 +220,8 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         """
     }
 
-    @ValidationTestFor(
-        ValidationProblemId.UNKNOWN_IMPLEMENTATION
-    )
-    @Issue("https://github.com/gradle/gradle/issues/5510")
-    def "task with Java lambda actions disables execution optimizations"() {
+    @Issue(["https://github.com/gradle/gradle/issues/5510", "https://github.com/gradle/gradle/issues/17327"])
+    def "task with Java lambda actions detects changes"() {
         file("buildSrc/src/main/java/LambdaActionOriginal.java") << javaClass("LambdaActionOriginal", lambdaPrintingString("ACTION", "From Lambda: original"))
         file("buildSrc/src/main/java/LambdaActionChanged.java") << javaClass("LambdaActionChanged", lambdaPrintingString("ACTION", "From Lambda: changed"))
 
@@ -249,27 +241,21 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         """
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown { additionalTaskAction(':myTask').implementedByLambda('LambdaActionOriginal').includeLink() })
         run "myTask"
         then:
         executedAndNotSkipped(":myTask")
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown { additionalTaskAction(':myTask').implementedByLambda('LambdaActionOriginal').includeLink() })
         run "myTask"
         then:
-        executedAndNotSkipped(":myTask")
+        skipped(":myTask")
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown { additionalTaskAction(':myTask').implementedByLambda('LambdaActionChanged').includeLink() })
         run "myTask", "-Pchanged"
         then:
         executedAndNotSkipped(":myTask")
     }
 
-    @ValidationTestFor(
-        ValidationProblemId.UNKNOWN_IMPLEMENTATION
-    )
     def "can change lambda action to anonymous inner class and back"() {
         file("buildSrc/src/main/java/LambdaAction.java") << javaClass("LambdaAction", lambdaPrintingString("ACTION", "From Lambda"))
         file("buildSrc/src/main/java/AnonymousAction.java") << javaClass("AnonymousAction", anonymousClassPrintingString("ACTION", "From Anonymous"))
@@ -292,11 +278,6 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         """
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
-            additionalTaskAction(':myTask')
-            implementedByLambda('LambdaAction')
-            includeLink()
-        })
         withBuildCache().run "myTask"
         then:
         executedAndNotSkipped(":myTask")
@@ -312,14 +293,9 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         skipped(":myTask")
 
         when:
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
-            additionalTaskAction(':myTask')
-            implementedByLambda('LambdaAction')
-            includeLink()
-        })
         withBuildCache().run "myTask"
         then:
-        executedAndNotSkipped(":myTask")
+        skipped(":myTask")
 
         when:
         withBuildCache().run "myTask", "-Panonymous"
@@ -327,7 +303,6 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         skipped(":myTask")
     }
 
-    @ToBeImplemented
     def "serializable lambda can be used as task action"() {
         file("buildSrc/src/main/java/LambdaAction.java") << javaClass("LambdaAction", serializableLambdaPrintingString("ACTION", "From Lambda"))
         setupCustomTask()
@@ -342,20 +317,14 @@ class LambdaInputsIntegrationTest extends AbstractIntegrationSpec implements Val
         """
 
         when:
-        // There shouldn't be a deprecation message
-        expectThatExecutionOptimizationDisabledWarningIsDisplayed(executer, implementationUnknown {
-            additionalTaskAction(':myTask')
-            implementedByLambda('LambdaAction')
-            includeLink()
-        })
         run "myTask"
         then:
         executedAndNotSkipped(":myTask")
-//
-//        when:
-//        run "myTask"
-//        then:
-//        skipped(":myTask")
+
+        when:
+        run "myTask"
+        then:
+        skipped(":myTask")
     }
 
     private TestFile setupCustomTask() {

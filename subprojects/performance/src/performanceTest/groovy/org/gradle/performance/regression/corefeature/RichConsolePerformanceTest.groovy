@@ -40,7 +40,7 @@ class RichConsolePerformanceTest extends AbstractCrossVersionPerformanceTest {
         runner.tasksToRun = tasks.split(' ')
         runner.warmUpRuns = 5
         runner.runs = 8
-        runner.targetVersions = ["7.5-20220514015008+0000"]
+        runner.targetVersions = ["7.6-20220513002340+0000"]
 
         when:
         def result = runner.run()

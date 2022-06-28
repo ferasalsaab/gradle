@@ -15,11 +15,8 @@
   content: '\00276F';
   font: 0.9em bold sans-serif;
   margin-left: -1em;
-  margin-right: 0.4em;
-}
-
-pre {
-    overflow: auto;
+  margin-top: 0.12em;
+  line-height: 25px;
 }
 
 ul.toc-sub {
